@@ -138,3 +138,18 @@ class G_Phi_Network_Decoder(nn.Module):
         out = self.layer8(out)
         out = self.af_module4(out)
         return out
+    
+class ForwardOperator(nn.Module):
+    
+    def __init__(self):
+        super(ForwardOperator, self).__init__()
+        self.encoder = F_Theta_Network_Encoder(3, 512)
+        self.decoder = G_Phi_Network_Decoder(512, 3)
+        self.awgn = AWGN(10)
+        self.loss = nn.MSELoss()
+        
+    def forward(self, x):
+        x = self.encoder(x)
+        self.awgn.work(x, x)
+        x = self.decoder(x)
+        return x
