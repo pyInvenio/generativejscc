@@ -8,6 +8,9 @@ from torchvision.utils import save_image
 from torch.autograd import Function
 
 from util_module import AF_Module, AttentionDecoder, AttentionEncoder, GDN, PowerNormalization, ResidualBlockUpsample
+from stylegan import StyleGan
+
+
     
 class AWGN():
     def __init__(self, snr) -> None:
@@ -147,9 +150,17 @@ class ForwardOperator(nn.Module):
         self.decoder = G_Phi_Network_Decoder(512, 3)
         self.awgn = AWGN(10)
         self.loss = nn.MSELoss()
+        self.gan = StyleGan('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl', 0.5, 'random', 'cuda')
         
     def forward(self, x):
         x = self.encoder(x)
         self.awgn.work(x, x)
-        x = self.decoder(x)
-        return x
+        x_hat = self.decoder(x)
+        
+        ganx = self.gan.G(x_hat)
+        gan_x_hat = self.encoder(ganx)
+        self.awgn.work(gan_x_hat, gan_x_hat)
+        gan_x_hat = self.decoder(gan_x_hat)
+        
+        mse_loss = self.loss(x_hat, gan_x_hat)
+        return x_hat, gan_x_hat, mse_loss

@@ -7,7 +7,7 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 
 transform = transforms.Compose([transforms.ToTensor()])
-train_dataset = datasets.ImageFolder(root='data/train', transform=transform)
+train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -24,8 +24,7 @@ for epoch in range(10):
         inputs, labels = data
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
+        x_hat, gan_hat_x, loss = model(inputs)
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
