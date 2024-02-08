@@ -150,7 +150,7 @@ class ForwardOperator(nn.Module):
         self.decoder = G_Phi_Network_Decoder(512, 3)
         self.awgn = AWGN(10)
         self.loss = nn.MSELoss()
-        self.gan = StyleGan('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl', 0.5, 'random', 'cuda')
+        self.gan = StyleGan('pretrained/ffhq-512-avg-tpurun1.pkl', 0.5, 'random', 'cuda')
         
     def forward(self, x):
         x = self.encoder(x)
