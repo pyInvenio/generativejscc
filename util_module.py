@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from torch.autograd import Function
 
 class LowerBound(Function):
     @staticmethod
@@ -100,13 +100,6 @@ class Concatenate(nn.Module):
         return torch.cat(tensors, dim=self.dim)
 
 
-# def GFR_Encoder_Module(inputs, name_prefix, num_filter, kernel_size, stride, activation=None):
-#     conv = tfc.SignalConv2D(num_filter, kernel_size, corr=True, strides_down=stride, padding="same_zeros",
-#                             use_bias=True, activation=tfc.GDN(), name=name_prefix + '_conv')(inputs)
-#     if activation == 'prelu':
-#         conv = PReLU(shared_axes=[1,2], name=name_prefix + '_prelu')(conv)
-#     return conv
-
 class GFR_Encoder_Module(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, activation=None):
         super(GFR_Encoder_Module, self).__init__()
@@ -122,24 +115,6 @@ class GFR_Encoder_Module(nn.Module):
         if self.activation:
             out = self.activation(out)
         return out
-
-# def Basic_Encoder(inputs, tcn):
-#     en1 = GFR_Encoder_Module(inputs, 'en1', 256, (9, 9), 2, 'prelu')
-#     en2 = GFR_Encoder_Module(en1, 'en2', 256, (5, 5), 2, 'prelu')
-#     en3 = GFR_Encoder_Module(en2, 'en3', 256, (5, 5), 1, 'prelu')
-#     en4 = GFR_Encoder_Module(en3, 'en4', 256, (5, 5), 1, 'prelu')
-#     en5 = GFR_Encoder_Module(en4, 'en5', tcn, (5, 5), 1)
-#     return en5
-
-
-# def GFR_Decoder_Module(inputs, name_prefix, num_filter, kernel_size, stride, activation=None):
-#     conv = tfc.SignalConv2D(num_filter, kernel_size, corr=False, strides_up=stride, padding="same_zeros", use_bias=True,
-#                             activation=tfc.GDN(inverse=True), name=name_prefix + '_conv')(inputs)
-#     if activation == 'prelu':
-#         conv = PReLU(shared_axes=[1,2], name=name_prefix + '_prelu')(conv)
-#     elif activation == 'sigmoid':
-#         conv = Activation('sigmoid', name=name_prefix + '_sigmoid')(conv)
-#     return conv
 
 class GFR_Decoder_Module(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, activation=None):
@@ -158,24 +133,7 @@ class GFR_Decoder_Module(nn.Module):
         if self.activation:
             out = self.activation(out)
         return out
-
-# def Basic_Decoder(inputs):
-#     de1 = GFR_Decoder_Module(inputs, 'de1', 256, (5, 5), 1, 'prelu')
-#     de2 = GFR_Decoder_Module(de1, 'de2', 256, (5, 5), 1, 'prelu')
-#     de3 = GFR_Decoder_Module(de2, 'de3', 256, (5, 5), 1, 'prelu')
-#     de4 = GFR_Decoder_Module(de3, 'de4', 256, (5, 5), 2, 'prelu')
-#     de5 = GFR_Decoder_Module(de4, 'de5', 3, (9, 9), 2, 'sigmoid')
-#     return de5
-
-
-# def AF_Module(inputs, snr, name_prefix):
-#     (_, width, height, ch_num) = inputs.shape
-#     m = GlobalAveragePooling2D(name=name_prefix + '_globalpooling')(inputs)
-#     m = Concatenate(name=name_prefix + 'concat')([m, snr])
-#     m = Dense(ch_num//16, activation='relu', name=name_prefix + '_dense1')(m)
-#     m = Dense(ch_num, activation='sigmoid', name=name_prefix + '_dense2')(m)
-#     out = Multiply(name=name_prefix + 'mul')([inputs, m])
-#     return out
+    
 class AF_Module(nn.Module):
     def __init__(self, channels, snr_size):
         super(AF_Module, self).__init__()
@@ -193,17 +151,6 @@ class AF_Module(nn.Module):
         out = x * m
         return out
 
-# def Attention_Encoder(inputs, snr, tcn):
-#     en1 = GFR_Encoder_Module(inputs, 'en1', 256, (9, 9), 2, 'prelu')
-#     en1 = AF_Module(en1, snr, 'en1')
-#     en2 = GFR_Encoder_Module(en1, 'en2', 256, (5, 5), 2, 'prelu')
-#     en2 = AF_Module(en2, snr, 'en2')
-#     en3 = GFR_Encoder_Module(en2, 'en3', 256, (5, 5), 1, 'prelu')
-#     en3 = AF_Module(en3, snr, 'en3')
-#     en4 = GFR_Encoder_Module(en3, 'en4', 256, (5, 5), 1, 'prelu')
-#     en4 = AF_Module(en4, snr, 'en4')
-#     en5 = GFR_Encoder_Module(en4, 'en5', tcn, (5, 5), 1)
-#     return en5
 
 class AttentionEncoder(nn.Module):
     def __init__(self, in_channels, snr_size, tcn):
@@ -229,19 +176,6 @@ class AttentionEncoder(nn.Module):
         x = self.en4_af(x, snr)
         x = self.en5(x)
         return x
-    
-# def Attention_Decoder(inputs, snr):
-#     de1 = GFR_Decoder_Module(inputs, 'de1', 256, (5, 5), 1, 'prelu')
-#     de1 = AF_Module(de1, snr, 'de1')
-#     de2 = GFR_Decoder_Module(de1, 'de2', 256, (5, 5), 1, 'prelu')
-#     de2 = AF_Module(de2, snr, 'de2')
-#     de3 = GFR_Decoder_Module(de2, 'de3', 256, (5, 5), 1, 'prelu')
-#     de3 = AF_Module(de3, snr, 'de3')
-#     de4 = GFR_Decoder_Module(de3, 'de4', 256, (5, 5), 2, 'prelu')
-#     de4 = AF_Module(de4, snr, 'de4')
-#     de5 = GFR_Decoder_Module(de4, 'de5', 3, (9, 9), 2, 'sigmoid')
-#     return de5
-
 class AttentionDecoder(nn.Module):
     def __init__(self, in_channels, snr_size, tcn):
         super(AttentionDecoder, self).__init__()
@@ -267,41 +201,6 @@ class AttentionDecoder(nn.Module):
         x = self.de5(x)
         return x
 
-# def AF_Module_H(inputs, snr, h_real, h_imag, name_prefix):
-#     (_, width, height, ch_num) = inputs.shape
-#     m = GlobalAveragePooling2D(name=name_prefix + '_globalpooling')(inputs)
-#     m = Concatenate(name=name_prefix + 'concat')([m, snr, h_real, h_imag])
-#     m = Dense(ch_num//16, activation='relu', name=name_prefix + '_dense1')(m)
-#     m = Dense(ch_num, activation='sigmoid', name=name_prefix + '_dense2')(m)
-#     out = Multiply(name=name_prefix + 'mul')([inputs, m])
-#     return out
-
-
-# def Attention_Encoder_H(inputs, snr, h_real, h_imag, tcn):
-#     en1 = GFR_Encoder_Module(inputs, 'en1', 256, (9, 9), 2, 'prelu')
-#     en1 = AF_Module_H(en1, snr, h_real, h_imag, 'en1')
-#     en2 = GFR_Encoder_Module(en1, 'en2', 256, (5, 5), 2, 'prelu')
-#     en2 = AF_Module_H(en2, snr, h_real, h_imag, 'en2')
-#     en3 = GFR_Encoder_Module(en2, 'en3', 256, (5, 5), 1, 'prelu')
-#     en3 = AF_Module_H(en3, snr, h_real, h_imag, 'en3')
-#     en4 = GFR_Encoder_Module(en3, 'en4', 256, (5, 5), 1, 'prelu')
-#     en4 = AF_Module_H(en4, snr, h_real, h_imag, 'en4')
-#     en5 = GFR_Encoder_Module(en4, 'en5', tcn, (5, 5), 1)
-#     return en5
-
-
-# def Attention_Decoder_H(inputs, h_real, h_imag, snr):
-#     de1 = GFR_Decoder_Module(inputs, 'de1', 256, (5, 5), 1, 'prelu')
-#     de1 = AF_Module_H(de1, snr, h_real, h_imag, 'de1')
-#     de2 = GFR_Decoder_Module(de1, 'de2', 256, (5, 5), 1, 'prelu')
-#     de2 = AF_Module_H(de2, snr, h_real, h_imag, 'de2')
-#     de3 = GFR_Decoder_Module(de2, 'de3', 256, (5, 5), 1, 'prelu')
-#     de3 = AF_Module_H(de3, snr, h_real, h_imag, 'de3')
-#     de4 = GFR_Decoder_Module(de3, 'de4', 256, (5, 5), 2, 'prelu')
-#     de4 = AF_Module_H(de4, snr, h_real, h_imag, 'de4')
-#     de5 = GFR_Decoder_Module(de4, 'de5', 3, (9, 9), 2, 'sigmoid')
-#     return de5
-
 class PowerNormalization(nn.Module):
     def __init__(self, codeword_shape):
         super(PowerNormalization, self).__init__()
@@ -316,7 +215,7 @@ class PowerNormalization(nn.Module):
     
     
 class ResidualBlockUpsample(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, device):
         super(ResidualBlockUpsample, self).__init__()
         
         self.conv1 = nn.Conv2d(in_channels, 3 * out_channels, kernel_size=3, stride=2, padding=1, bias=False)
@@ -326,7 +225,7 @@ class ResidualBlockUpsample(nn.Module):
         self.pixel_shuffle2 = nn.PixelShuffle(upscale_factor=2)
         self.leaky_relu = nn.LeakyReLU(inplace=True)
         self.conv3 = nn.Conv2d(3 * out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.gdn = GDN(out_channels)
+        self.gdn = GDN(out_channels, device=device)
 
         self.downsample = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2, bias=False)
     
@@ -343,4 +242,55 @@ class ResidualBlockUpsample(nn.Module):
         out = self.gdn(out)
         
         out += identity
+        return out
+    
+    
+
+class SignalConv2D(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, corr=True, strides_down=1, padding="same"):
+        super(SignalConv2D, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=strides_down, padding=padding)
+        self.activation = nn.ReLU()  # ReLU activation function
+        
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.activation(x)
+        return x
+
+class ResidualBlock(nn.Module):
+    def __init__(self, num_filters):
+        super(ResidualBlock, self).__init__()
+        self.conv0 = SignalConv2D(num_filters//2, num_filters//2, kernel_size=(1, 1))
+        self.conv1 = SignalConv2D(num_filters//2, num_filters//2, kernel_size=(3, 3))
+        self.conv2 = SignalConv2D(num_filters//2, num_filters, kernel_size=(1, 1))
+        
+    def forward(self, x):
+        residual = x
+        out = self.conv0(x)
+        out = self.conv1(out)
+        out = self.conv2(out)
+        out += residual
+        return out
+
+class NonLocalAttentionBlock(nn.Module):
+    def __init__(self, num_filters):
+        super(NonLocalAttentionBlock, self).__init__()
+        self.trunk_branch = nn.Sequential(
+            ResidualBlock(num_filters),
+            ResidualBlock(num_filters),
+            ResidualBlock(num_filters)
+        )
+        self.attention_branch = nn.Sequential(
+            ResidualBlock(num_filters),
+            ResidualBlock(num_filters),
+            ResidualBlock(num_filters)
+        )
+        self.conv1x1 = SignalConv2D(num_filters, num_filters, kernel_size=(1, 1))
+        
+    def forward(self, x):
+        trunk_branch_out = self.trunk_branch(x)
+        attention_branch_out = self.attention_branch(x)
+        attention_branch_out = self.conv1x1(attention_branch_out)
+        attention_branch_out = torch.sigmoid(attention_branch_out)
+        out = x + attention_branch_out * trunk_branch_out
         return out

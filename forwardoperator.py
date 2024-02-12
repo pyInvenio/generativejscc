@@ -7,10 +7,13 @@ from torchvision import datasets, transforms
 from torchvision.utils import save_image
 from torch.autograd import Function
 
-from util_module import AF_Module, AttentionDecoder, AttentionEncoder, GDN, PowerNormalization, ResidualBlockUpsample
+from util_module import AF_Module, GDN, PowerNormalization, ResidualBlockUpsample, NonLocalAttentionBlock
 from stylegan import StyleGan
 
+num_filters = 128
 
+def random_snr():
+    return np.random.randint(-5, 5)
     
 class AWGN():
     def __init__(self, snr) -> None:
@@ -76,26 +79,27 @@ class F_Theta_Network_Encoder(nn.Module):
         super(F_Theta_Network_Encoder, self).__init__()
 
         self.layer1 = ResidualBlock(in_channels, 512, stride=2)
-        self.af_module1 = AF_Module(512)
+        self.af_module1 = AF_Module(512, 1)
         self.layer2 = ResidualBlock(512, 512)
         self.layer3 = ResidualBlock(512, 512, stride=2)
-        self.af_module2 = AF_Module(512)
-        self.attention_module = AttentionEncoder(512)
+        self.af_module2 = AF_Module(512, 1)
+        self.attention_module = NonLocalAttentionBlock(num_filters)
         self.layer4 = ResidualBlock(512, 512)
         self.layer5 = ResidualBlock(512, 512, stride=2)
-        self.af_module3 = AF_Module(512)
+        self.af_module3 = AF_Module(512, 1)
         self.layer6 = ResidualBlock(512, 512)
         self.layer7 = ResidualBlock(512, 512, stride=2)
-        self.af_module4 = AF_Module(num_classes)  # Assuming num_classes is Cout
-        self.attention_module2 = AttentionEncoder(num_classes)
+        self.af_module4 = AF_Module(num_classes, 1)  # Assuming num_classes is Cout
+        self.attention_module2 = NonLocalAttentionBlock(num_filters)
         self.power_norm = PowerNormalization(num_classes)
 
     def forward(self, x):
+        snr =  torch.randn(1).to('cuda')
         out = self.layer1(x)
-        out = self.af_module1(out)
+        out = self.af_module1(out, snr)
         out = self.layer2(out)
         out = self.layer3(out)
-        out = self.af_module2(out)
+        out = self.af_module1(out, snr)
         out = self.attention_module(out)
         out = self.layer4(out)
         out = self.layer5(out)
@@ -108,31 +112,32 @@ class F_Theta_Network_Encoder(nn.Module):
         return out
 
 class G_Phi_Network_Decoder(nn.Module):
-    def __init__(self, in_channels, num_classes):
+    def __init__(self, in_channels, num_classes, device):
         super(G_Phi_Network_Decoder, self).__init__()
-        self.attention_module = AttentionDecoder(num_classes)
+        self.attention_module = NonLocalAttentionBlock(num_filters)
         self.layer1 = ResidualBlock(512, 512)
-        self.layer2 = ResidualBlockUpsample(512, 512)
-        self.af_module1 = AF_Module(512)
+        self.layer2 = ResidualBlockUpsample(512, 512, device)
+        self.af_module1 = AF_Module(512, 1)
         self.layer3 = ResidualBlock(512, 512)
-        self.layer4 = ResidualBlockUpsample(512, 512)
-        self.af_module2 = AF_Module(512)
-        self.attention_module2 = AttentionDecoder(512)
+        self.layer4 = ResidualBlockUpsample(512, 512, device)
+        self.af_module2 = AF_Module(512, 1)
+        self.attention_module2 = NonLocalAttentionBlock(num_filters)
         self.layer5 = ResidualBlock(512, 512)
-        self.layer6 = ResidualBlockUpsample(512, 512)
-        self.af_module3 = AF_Module(512)
+        self.layer6 = ResidualBlockUpsample(512, 512, device)
+        self.af_module3 = AF_Module(512, 1)
         self.layer7 = ResidualBlock(512, 512)
-        self.layer8 = ResidualBlockUpsample(512, 512)
-        self.af_module4 = AF_Module(512)
+        self.layer8 = ResidualBlockUpsample(512, 512, device)
+        self.af_module4 = AF_Module(512, 1)
         
     def forward(self, x):
+        snr =  torch.randn(1).to('cuda')
         out = self.attention_module(x)
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.af_module1(out)
         out = self.layer3(out)
         out = self.layer4(out)
-        out = self.af_module2(out)
+        out = self.af_module1(out, snr)
         out = self.attention_module2(out)
         out = self.layer5(out)
         out = self.layer6(out)
@@ -144,13 +149,13 @@ class G_Phi_Network_Decoder(nn.Module):
     
 class ForwardOperator(nn.Module):
     
-    def __init__(self):
+    def __init__(self, device):
         super(ForwardOperator, self).__init__()
         self.encoder = F_Theta_Network_Encoder(3, 512)
-        self.decoder = G_Phi_Network_Decoder(512, 3)
+        self.decoder = G_Phi_Network_Decoder(512, 3, device)
         self.awgn = AWGN(10)
         self.loss = nn.MSELoss()
-        self.gan = StyleGan('pretrained/ffhq-512-avg-tpurun1.pkl', 0.5, 'random', 'cuda')
+        self.gan = StyleGan('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl', 0.5, 'random', 'cuda')
         
     def forward(self, x):
         x = self.encoder(x)
