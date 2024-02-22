@@ -9,7 +9,7 @@ from tqdm import tqdm
 if __name__ == '__main__': 
     transform = transforms.Compose([transforms.ToTensor()])
     train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=512, shuffle=True, num_workers=4)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

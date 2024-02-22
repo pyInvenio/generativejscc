@@ -145,10 +145,13 @@ class AF_Module(nn.Module):
 
     def forward(self, x, snr):
         m = self.global_pooling(x)
+        m = m.view(m.size(0), -1)  # Flatten the tensor
+        snr = snr.expand(x.size(0), -1)  # Expand snr to match batch size of x
         m = self.concat([m, snr])
         m = F.relu(self.dense1(m))
         m = self.sigmoid(self.dense2(m))
-        out = x * m
+        m = m.view(m.size(0), -1, 1, 1)  # Restore the original shape
+        out = x * m.expand_as(x)  # Expand the mask to match the input shape
         return out
 
 
@@ -207,21 +210,26 @@ class PowerNormalization(nn.Module):
         self.codeword_shape = codeword_shape
 
     def forward(self, codeword):
-        codeword = codeword.view(1, -1)
-        n_vals = codeword.size(1)
-        normalized = (codeword / torch.norm(codeword, dim=1, keepdim=True)) * torch.sqrt(torch.tensor(n_vals).float())
-        ch_input = normalized.view(self.codeword_shape)
-        return ch_input
-    
+        batch_size = codeword.size(0)
+        num_channels = codeword.size(1)
+        spatial_dims = codeword.numel() // (batch_size * num_channels)
+        
+        normalized = codeword.view(batch_size, num_channels, spatial_dims)
+        norm = torch.norm(normalized, dim=(1, 2), keepdim=True)
+        normalized = normalized / norm * torch.sqrt(torch.tensor(spatial_dims, dtype=torch.float32, device=codeword.device))
+        
+        return normalized.view(batch_size, num_channels, spatial_dims)
+
+
     
 class ResidualBlockUpsample(nn.Module):
     def __init__(self, in_channels, out_channels, device):
         super(ResidualBlockUpsample, self).__init__()
         
-        self.conv1 = nn.Conv2d(in_channels, 3 * out_channels, kernel_size=3, stride=2, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_channels, 4 * out_channels, kernel_size=3, stride=2, padding=1, bias=False)
         self.pixel_shuffle1 = nn.PixelShuffle(upscale_factor=2)
 
-        self.conv2 = nn.Conv2d(4 * out_channels, 3 * out_channels, kernel_size=3, stride=2, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(3 * out_channels + in_channels, 4 * out_channels, kernel_size=3, stride=1, padding=1, bias=False)  # Adjust input channels for concatenation
         self.pixel_shuffle2 = nn.PixelShuffle(upscale_factor=2)
         self.leaky_relu = nn.LeakyReLU(inplace=True)
         self.conv3 = nn.Conv2d(3 * out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
@@ -234,16 +242,20 @@ class ResidualBlockUpsample(nn.Module):
         out = self.conv1(x)
         out = self.pixel_shuffle1(out)
         
-        out = torch.cat([out, identity], dim=1)
+        residual = out  # Save output of first convolution for concatenation later
+        
         out = self.conv2(out)
         out = self.pixel_shuffle2(out)
         out = self.leaky_relu(out)
         out = self.conv3(out)
         out = self.gdn(out)
         
-        out += identity
+        # Concatenate residual (identity) with the output of the second convolution
+        out = torch.cat([out, residual], dim=1)
+        
+        out += identity  # Add identity (downsampled input) to the output
         return out
-    
+
     
 
 class SignalConv2D(nn.Module):
@@ -256,13 +268,12 @@ class SignalConv2D(nn.Module):
         x = self.conv(x)
         x = self.activation(x)
         return x
-
 class ResidualBlock(nn.Module):
     def __init__(self, num_filters):
         super(ResidualBlock, self).__init__()
-        self.conv0 = SignalConv2D(num_filters//2, num_filters//2, kernel_size=(1, 1))
-        self.conv1 = SignalConv2D(num_filters//2, num_filters//2, kernel_size=(3, 3))
-        self.conv2 = SignalConv2D(num_filters//2, num_filters, kernel_size=(1, 1))
+        self.conv0 = SignalConv2D(num_filters, num_filters, kernel_size=(1, 1))
+        self.conv1 = SignalConv2D(num_filters, num_filters, kernel_size=(3, 3), padding=1)
+        self.conv2 = SignalConv2D(num_filters, num_filters, kernel_size=(1, 1))
         
     def forward(self, x):
         residual = x

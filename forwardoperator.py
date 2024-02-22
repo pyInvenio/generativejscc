@@ -10,24 +10,21 @@ from torch.autograd import Function
 from util_module import AF_Module, GDN, PowerNormalization, ResidualBlockUpsample, NonLocalAttentionBlock
 from stylegan import StyleGan
 
-num_filters = 128
+num_filters = 512
 
 def random_snr():
     return np.random.randint(-5, 5)
     
 class AWGN():
-    def __init__(self, snr) -> None:
+    def __init__(self, snr):
         self.snr = snr
         
     def work(self, input, output):
-        symboles_in = input
-        noise = np.sqrt(10 **(-self.snr/10))
-        awgn_filter = noise*np.random.randn(len(symboles_in))
+        symboles_in = input.clone()  # Clone the input tensor to prevent in-place modification
+        noise = torch.sqrt(torch.tensor(10 **(-self.snr/10), dtype=torch.float32))  # Convert noise to tensor
+        awgn_filter = noise * torch.randn_like(symboles_in)  # Generate noise tensor
         
-        for i, symbol in enumerate(symboles_in):
-            output[i] = symbol + awgn_filter[i]
-            
-        return output
+        output[:] = symboles_in + awgn_filter  # Add noise to input and assign to output
 
 
 class ResidualBlockS2(nn.Module):
@@ -91,7 +88,7 @@ class F_Theta_Network_Encoder(nn.Module):
         self.layer7 = ResidualBlock(512, 512, stride=2)
         self.af_module4 = AF_Module(num_classes, 1)  # Assuming num_classes is Cout
         self.attention_module2 = NonLocalAttentionBlock(num_filters)
-        self.power_norm = PowerNormalization(num_classes)
+        self.power_norm = PowerNormalization((num_classes,))
 
     def forward(self, x):
         snr =  torch.randn(1).to('cuda')
@@ -99,14 +96,14 @@ class F_Theta_Network_Encoder(nn.Module):
         out = self.af_module1(out, snr)
         out = self.layer2(out)
         out = self.layer3(out)
-        out = self.af_module1(out, snr)
+        out = self.af_module2(out, snr)
         out = self.attention_module(out)
         out = self.layer4(out)
         out = self.layer5(out)
-        out = self.af_module3(out)
+        out = self.af_module3(out, snr)
         out = self.layer6(out)
         out = self.layer7(out)
-        out = self.af_module4(out)
+        out = self.af_module4(out, snr)
         out = self.attention_module2(out)
         out = self.power_norm(out)
         return out
@@ -127,24 +124,24 @@ class G_Phi_Network_Decoder(nn.Module):
         self.af_module3 = AF_Module(512, 1)
         self.layer7 = ResidualBlock(512, 512)
         self.layer8 = ResidualBlockUpsample(512, 512, device)
-        self.af_module4 = AF_Module(512, 1)
+        self.af_module4 = AF_Module(3, 1)
         
     def forward(self, x):
         snr =  torch.randn(1).to('cuda')
         out = self.attention_module(x)
         out = self.layer1(out)
         out = self.layer2(out)
-        out = self.af_module1(out)
+        out = self.af_module1(out, snr)
         out = self.layer3(out)
         out = self.layer4(out)
-        out = self.af_module1(out, snr)
+        out = self.af_module2(out, snr)
         out = self.attention_module2(out)
         out = self.layer5(out)
         out = self.layer6(out)
-        out = self.af_module3(out)
+        out = self.af_module3(out, snr)
         out = self.layer7(out)
         out = self.layer8(out)
-        out = self.af_module4(out)
+        out = self.af_module4(out, snr)
         return out
     
 class ForwardOperator(nn.Module):
@@ -158,6 +155,10 @@ class ForwardOperator(nn.Module):
         self.gan = StyleGan('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl', 0.5, 'random', 'cuda')
         
     def forward(self, x):
+        # Assuming x is of size (batch_size, channels, height, width) where batch_size = 64
+        batch_size = x.size(0)
+        x = x.view(batch_size, 3, 32, 32)  # Reshape to match CIFAR10 image size
+        
         x = self.encoder(x)
         self.awgn.work(x, x)
         x_hat = self.decoder(x)
